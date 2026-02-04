@@ -105,19 +105,54 @@ def load_data():
 @st.cache_resource
 def load_model():
     try:
-        model = joblib.load('modele_reactif_v1.pkl')
+        model = joblib.load('modele_reactif_v2.pkl')
         return model
     except FileNotFoundError:
-        st.error("modele_reactif_v1.pkl introuvable")
+        st.error("modele_reactif_v2.pkl introuvable")
         return None
 
 def get_scenario_params(scenario):
     scenarios = {
-        "Normal": {"temp": 15, "grippe": 20, "admissions_j1": 200, "occupation_rea": 50},
-        "Hiver": {"temp": 0, "grippe": 60, "admissions_j1": 280, "occupation_rea": 75},
-        "Épidémie": {"temp": 10, "grippe": 90, "admissions_j1": 350, "occupation_rea": 85},
-        "Grève": {"temp": 15, "grippe": 25, "admissions_j1": 150, "occupation_rea": 40},
-        "Afflux Massif": {"temp": 25, "grippe": 30, "admissions_j1": 400, "occupation_rea": 90}
+        "Normal": {
+            "temp": 15, 
+            "grippe": 20, 
+            "admissions_j1": 200, 
+            "occupation_rea": 50,
+            "ide_dispo": 18,
+            "stock_masques_jours": 10
+        },
+        "Hiver": {
+            "temp": 0, 
+            "grippe": 60, 
+            "admissions_j1": 280, 
+            "occupation_rea": 75,
+            "ide_dispo": 15,
+            "stock_masques_jours": 7
+        },
+        "Épidémie": {
+            "temp": 10, 
+            "grippe": 90, 
+            "admissions_j1": 350, 
+            "occupation_rea": 85,
+            "ide_dispo": 16,
+            "stock_masques_jours": 3
+        },
+        "Grève": {
+            "temp": 15, 
+            "grippe": 25, 
+            "admissions_j1": 150, 
+            "occupation_rea": 40,
+            "ide_dispo": 10,
+            "stock_masques_jours": 12
+        },
+        "Afflux Massif": {
+            "temp": 25, 
+            "grippe": 30, 
+            "admissions_j1": 400, 
+            "occupation_rea": 90,
+            "ide_dispo": 20,
+            "stock_masques_jours": 5
+        }
     }
     return scenarios.get(scenario, scenarios["Normal"])
 
@@ -134,6 +169,7 @@ def prepare_features(temp, grippe, admissions_j1, occupation_rea, jour_semaine=1
         'scenario_cat': scenario_cat,
         'absences_personnel': 5 if jour_semaine in [6, 7] else 2,
         'admissions_veille': admissions_j1,
+        'reanimation_occupes': occupation_rea,
         'vacances_zone_c': 0,
         'trend_fievre': 30,
         'trend_covid': 15,
@@ -235,14 +271,63 @@ def main():
     st.title("Hôpital Pitié-Salpêtrière")
     st.subheader("Système de Prédiction des Admissions aux Urgences")
 
-    scenario = "Normal"
+    st.sidebar.markdown("### Simulateur de Scénarios")
+
+    scenario = st.sidebar.selectbox(
+        "Scénario",
+        ["Normal", "Hiver", "Épidémie", "Grève", "Afflux Massif"],
+        help="Sélectionnez un scénario prédéfini"
+    )
+
     params = get_scenario_params(scenario)
 
+    st.sidebar.markdown("#### Conditions Météo & Santé")
+
+    temperature = st.sidebar.slider(
+        "Température (°C)",
+        min_value=-10,
+        max_value=40,
+        value=params['temp'],
+        help="Température prévue pour demain"
+    )
+
+    intensite_grippe = st.sidebar.slider(
+        "Intensité Grippe",
+        min_value=0,
+        max_value=100,
+        value=params['grippe'],
+        help="Indicateur épidémique (0 = faible, 100 = épidémie)"
+    )
+
+    st.sidebar.markdown("#### Données de la Veille (J-1)")
+
+    admissions_j1 = st.sidebar.number_input(
+        "Admissions J-1",
+        min_value=50,
+        max_value=500,
+        value=params['admissions_j1'],
+        step=10,
+        help="Nombre d'admissions de la veille"
+    )
+
+    occupation_rea = st.sidebar.number_input(
+        "Occupation Réa J-1 (%)",
+        min_value=0,
+        max_value=100,
+        value=params['occupation_rea'],
+        step=5,
+        help="Taux d'occupation de la réanimation"
+    )
+
+
+    ide_dispo = st.sidebar.number_input("IDE disponibles", min_value=5, max_value=50, value=params['ide_dispo'])
+    stock_masques_jours = st.sidebar.number_input("Stock masques (jours)", min_value=0, max_value=30, value=params['stock_masques_jours'])
+
     features_df = prepare_features(
-        temp=params['temp'],
-        grippe=params['grippe'],
-        admissions_j1=params['admissions_j1'],
-        occupation_rea=params['occupation_rea'],
+        temp=temperature,
+        grippe=intensite_grippe,
+        admissions_j1=admissions_j1,
+        occupation_rea=occupation_rea,
         jour_semaine=datetime.now().weekday() + 1,
         mois=datetime.now().month,
         scenario=scenario
@@ -250,7 +335,7 @@ def main():
 
     admissions_predites = predict_admissions(model, features_df, force_simulation=False)
     kpis = calculate_kpis(admissions_predites)
-    alerts = generate_alerts(kpis)
+    alerts = generate_alerts(kpis, stock_masques_jours, ide_dispo)
 
     st.markdown("### Tableau de Bord Décisionnel - Prévisions J+1")
     st.markdown("")

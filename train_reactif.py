@@ -30,6 +30,7 @@ features = [
     'scenario_cat',        # Scénario encodé
     'absences_personnel',  # RH
     'admissions_veille',   # Continuité temporelle
+    'reanimation_occupes', # Occupation de la réanimation
     'vacances_zone_c',     # Vacances scolaires Paris
     'trend_fievre',        # Google Trends fièvre
     'trend_covid',         # Google Trends COVID
@@ -68,6 +69,7 @@ base_features = pd.DataFrame([{
     'scenario_cat': 0,  
     'absences_personnel': 2,
     'admissions_veille': 200,
+    'reanimation_occupes': 50,
     'vacances_zone_c': 0,        
     'trend_fievre': 30,
     'trend_covid': 15,
@@ -89,5 +91,5 @@ pred_epidemie = model.predict(test_epidemie)[0]
 diff_epidemie = pred_epidemie - pred_base
 
 
-joblib.dump(model, 'modele_reactif_v1.pkl')
+joblib.dump(model, 'modele_reactif_v2.pkl')
 
