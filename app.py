@@ -3,6 +3,8 @@ import pandas as pd
 import joblib
 import numpy as np
 from datetime import datetime, timedelta
+import plotly.express as px
+import plotly.graph_objects as go
 
 st.set_page_config(
     page_title="Pitié-Salpêtrière - Prédictions Admissions",
@@ -337,59 +339,165 @@ def main():
     kpis = calculate_kpis(admissions_predites)
     alerts = generate_alerts(kpis, stock_masques_jours, ide_dispo)
 
-    st.markdown("### Tableau de Bord Décisionnel - Prévisions J+1")
-    st.markdown("")
+    tab1, tab2 = st.tabs(["Dashboard J+1", "Prévisions 7 Jours"])
 
-    col1, col2, col3, col4 = st.columns(4)
+    with tab1:
+        st.markdown("### Tableau de Bord Décisionnel - Prévisions J+1")
+        st.markdown("")
 
-    with col1:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">ADMISSIONS PRÉVUES</div>
-            <div class="kpi-value">{admissions_predites}</div>
-            <div class="kpi-subtitle">Prédiction IA</div>
-        </div>
-        """, unsafe_allow_html=True)
+        col1, col2, col3, col4 = st.columns(4)
 
-    with col2:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">BESOINS IDE</div>
-            <div class="kpi-value">{kpis['besoins_ide']}</div>
-            <div class="kpi-subtitle">1 IDE / 15 admissions</div>
-        </div>
-        """, unsafe_allow_html=True)
+        with col1:
+            st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">ADMISSIONS PRÉVUES</div>
+                <div class="kpi-value">{admissions_predites}</div>
+                <div class="kpi-subtitle">Prédiction IA</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    with col3:
-        color = "#EF4444" if kpis['taux_occupation'] > 90 else "#F59E0B" if kpis['taux_occupation'] > 75 else "#10B981"
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">TAUX OCCUPATION LITS</div>
-            <div class="kpi-value" style="color: {color};">{kpis['taux_occupation']}%</div>
-            <div class="kpi-subtitle">Service Urgences: 250 lits</div>
-        </div>
-        """, unsafe_allow_html=True)
+        with col2:
+            st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">BESOINS IDE</div>
+                <div class="kpi-value">{kpis['besoins_ide']}</div>
+                <div class="kpi-subtitle">1 IDE / 15 admissions</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    with col4:
-        st.markdown(f"""
-        <div class="kpi-card">
-            <div class="kpi-title">CONSOMMATION MASQUES</div>
-            <div class="kpi-value">{kpis['consommation_masques']:,}</div>
-            <div class="kpi-subtitle">9 masques / patient</div>
-        </div>
-        """, unsafe_allow_html=True)
+        with col3:
+            color = "#EF4444" if kpis['taux_occupation'] > 90 else "#F59E0B" if kpis['taux_occupation'] > 75 else "#10B981"
+            st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">TAUX OCCUPATION LITS</div>
+                <div class="kpi-value" style="color: {color};">{kpis['taux_occupation']}%</div>
+                <div class="kpi-subtitle">Service Urgences: 250 lits</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.markdown("---")
+        with col4:
+            st.markdown(f"""
+            <div class="kpi-card">
+                <div class="kpi-title">CONSOMMATION MASQUES</div>
+                <div class="kpi-value">{kpis['consommation_masques']:,}</div>
+                <div class="kpi-subtitle">9 masques / patient</div>
+            </div>
+            """, unsafe_allow_html=True)
 
-    st.markdown("### Centre d'Alertes")
+        st.markdown("---")
 
-    for alert in alerts:
-        if alert['type'] == 'error':
-            st.error(alert['message'])
-        elif alert['type'] == 'warning':
-            st.warning(alert['message'])
-        else:
-            st.success(alert['message'])
+        st.markdown("### Centre d'Alertes")
+
+        for alert in alerts:
+            if alert['type'] == 'error':
+                st.error(alert['message'])
+            elif alert['type'] == 'warning':
+                st.warning(alert['message'])
+            else:
+                st.success(alert['message'])
+
+    with tab2:
+        st.markdown("### Prévisions sur 7 Jours")
+        st.markdown("")
+
+        previsions_7j = []
+        date_actuelle = datetime.now()
+        admissions_prev = admissions_j1
+
+        for jour in range(1, 8):
+            date_prev = date_actuelle + timedelta(days=jour)
+            jour_semaine_calc = date_prev.weekday() + 1
+            mois_calc = date_prev.month
+
+            features_jour = prepare_features(
+                temp=temperature,
+                grippe=intensite_grippe,
+                admissions_j1=admissions_prev,
+                occupation_rea=occupation_rea,
+                jour_semaine=jour_semaine_calc,
+                mois=mois_calc,
+                scenario=scenario
+            )
+
+            pred_jour = predict_admissions(model, features_jour, force_simulation=False)
+            kpis_jour = calculate_kpis(pred_jour)
+
+            previsions_7j.append({
+                'Jour': f"J+{jour}",
+                'Date': date_prev.strftime('%d/%m'),
+                'Admissions': pred_jour,
+                'IDE': kpis_jour['besoins_ide'],
+                'Taux Occupation': kpis_jour['taux_occupation'],
+                'Masques': kpis_jour['consommation_masques']
+            })
+
+            admissions_prev = pred_jour
+
+        df_previsions = pd.DataFrame(previsions_7j)
+
+        fig_admissions = go.Figure()
+        fig_admissions.add_trace(go.Scatter(
+            x=df_previsions['Jour'],
+            y=df_previsions['Admissions'],
+            mode='lines+markers',
+            name='Admissions',
+            line=dict(color='#3B82F6', width=3),
+            marker=dict(size=10, color='#3B82F6')
+        ))
+        fig_admissions.update_layout(
+            title="Évolution des Admissions Prévues",
+            plot_bgcolor='white',
+            paper_bgcolor='white',
+            font=dict(color='#1E40AF'),
+            xaxis_title="",
+            yaxis_title="Nombre d'admissions"
+        )
+        st.plotly_chart(fig_admissions, use_container_width=True)
+
+        col_g1, col_g2 = st.columns(2)
+
+        with col_g1:
+            fig_occupation = go.Figure()
+            fig_occupation.add_trace(go.Bar(
+                x=df_previsions['Jour'],
+                y=df_previsions['Taux Occupation'],
+                name='Taux Occupation',
+                marker_color='#60A5FA'
+            ))
+            fig_occupation.add_hline(y=90, line_dash="dash", line_color="red", 
+                                   annotation_text="Seuil critique 90%")
+            fig_occupation.update_layout(
+                title="Taux d'Occupation des Lits (%)",
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                font=dict(color='#1E40AF'),
+                showlegend=False
+            )
+            st.plotly_chart(fig_occupation, use_container_width=True)
+
+        with col_g2:
+            fig_ide = go.Figure()
+            fig_ide.add_trace(go.Bar(
+                x=df_previsions['Jour'],
+                y=df_previsions['IDE'],
+                name='Besoins IDE',
+                marker_color='#60A5FA'
+            ))
+            fig_ide.update_layout(
+                title="Besoins en IDE",
+                plot_bgcolor='white',
+                paper_bgcolor='white',
+                font=dict(color='#1E40AF'),
+                showlegend=False
+            )
+            st.plotly_chart(fig_ide, use_container_width=True)
+
+        st.markdown("### Tableau Récapitulatif")
+        st.dataframe(
+            df_previsions,
+            use_container_width=True,
+            hide_index=True
+        )
 
 if __name__ == "__main__":
     main()
