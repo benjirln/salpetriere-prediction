@@ -339,7 +339,7 @@ def main():
     kpis = calculate_kpis(admissions_predites)
     alerts = generate_alerts(kpis, stock_masques_jours, ide_dispo)
 
-    tab1, tab2 = st.tabs(["Dashboard J+1", "Prévisions 7 Jours"])
+    tab1, tab2 = st.tabs(["Dashboard J+1", "Prévisions J+7"])
 
     with tab1:
         st.markdown("### Tableau de Bord Décisionnel - Prévisions J+1")
